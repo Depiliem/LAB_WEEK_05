@@ -14,6 +14,10 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 
 class MainActivity : AppCompatActivity() {
 
+    companion object {
+        private const val TAG = "MainActivity"
+    }
+
     private val retrofit by lazy {
         Retrofit.Builder()
             .baseUrl("https://api.thecatapi.com/v1/")
@@ -25,13 +29,8 @@ class MainActivity : AppCompatActivity() {
         retrofit.create(CatApiService::class.java)
     }
 
-    private val apiResponseView: TextView by lazy {
-        findViewById(R.id.api_response)
-    }
-
-    private val imageResultView: ImageView by lazy {
-        findViewById(R.id.image_result)
-    }
+    private lateinit var apiResponseView: TextView
+    private lateinit var imageResultView: ImageView
 
     private val imageLoader: ImageLoader by lazy {
         GlideLoader(this)
@@ -40,6 +39,10 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        apiResponseView = findViewById(R.id.api_response)
+        imageResultView = findViewById(R.id.image_result)
+
         getCatImageResponse()
     }
 
@@ -51,35 +54,41 @@ class MainActivity : AppCompatActivity() {
                 response: Response<List<ImageData>>
             ) {
                 if (response.isSuccessful) {
-                    val image = response.body()
-                    val firstImage = image?.firstOrNull()?.imageUrl.orEmpty()
+                    val firstItem = response.body()?.firstOrNull()
 
-                    if (firstImage.isNotBlank()) {
-                        imageLoader.loadImage(firstImage, imageResultView)
-                    } else {
-                        Log.d(MAIN_ACTIVITY, "Missing image URL")
+                    runOnUiThread {
+                        if (firstItem == null) {
+                            apiResponseView.text = "No data"
+                            imageResultView.setImageDrawable(null)
+                            return@runOnUiThread
+                        }
+
+                        val breedName = firstItem.breeds?.firstOrNull()?.name ?: "Unknown"
+                        val imageUrl = firstItem.imageUrl.orEmpty()
+
+                        apiResponseView.text = "Breed: $breedName"
+
+                        if (imageUrl.isNotBlank()) {
+                            imageLoader.loadImage(imageUrl, imageResultView)
+                        } else {
+                            Log.d(TAG, "Missing image URL for item")
+                            imageResultView.setImageDrawable(null)
+                        }
                     }
-
-                    apiResponseView.text = getString(
-                        R.string.image_placeholder,
-                        firstImage
-                    )
                 } else {
-                    Log.e(
-                        MAIN_ACTIVITY,
-                        "Failed to get response\n" +
-                                response.errorBody()?.string().orEmpty()
-                    )
+                    Log.e(TAG, "API error: ${response.code()} ${response.message()}")
+                    runOnUiThread {
+                        apiResponseView.text = "Error: ${response.code()}"
+                    }
                 }
             }
 
             override fun onFailure(call: Call<List<ImageData>>, t: Throwable) {
-                Log.e(MAIN_ACTIVITY, "Failed to get response", t)
+                Log.e(TAG, "Network error", t)
+                runOnUiThread {
+                    apiResponseView.text = "Failed: ${t.message}"
+                }
             }
         })
-    }
-
-    companion object {
-        const val MAIN_ACTIVITY = "MAIN_ACTIVITY"
     }
 }
